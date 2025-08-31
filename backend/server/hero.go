@@ -7,19 +7,18 @@ import (
 	"time"
 
 	"github.com/expki/backend/pixel-protocol/database"
+	"github.com/expki/backend/pixel-protocol/geolookup"
 	"github.com/expki/backend/pixel-protocol/logger"
 	"github.com/google/uuid"
 	"gorm.io/plugin/dbresolver"
 )
 
 type HeroRequest struct {
-	Country     string `json:"country"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 }
 
 type HeroUpdateRequest struct {
-	Country     *string `json:"country,omitempty"`
 	Title       *string `json:"title,omitempty"`
 	Description *string `json:"description,omitempty"`
 }
@@ -107,14 +106,14 @@ func (s *Server) createHero(w http.ResponseWriter, r *http.Request, player datab
 	}
 
 	// Validate required fields
-	if req.Country == "" || req.Title == "" || req.Description == "" {
-		http.Error(w, "Country, title, and description are required", http.StatusBadRequest)
+	if req.Title == "" || req.Description == "" {
+		http.Error(w, "Title and Description are required", http.StatusBadRequest)
 		return
 	}
 
 	hero := database.Hero{
 		ID:          uuid.New(),
-		Country:     req.Country,
+		Country:     geolookup.GetClientCountry(r),
 		Elo:         1000, // Starting Elo rating
 		Title:       req.Title,
 		Description: req.Description,
@@ -143,7 +142,7 @@ func (s *Server) updateHero(w http.ResponseWriter, r *http.Request, player datab
 	}
 
 	// Validate required fields
-	if req.Country == "" || req.Title == "" || req.Description == "" {
+	if req.Title == "" || req.Description == "" {
 		http.Error(w, "Country, title, and description are required", http.StatusBadRequest)
 		return
 	}
@@ -163,7 +162,7 @@ func (s *Server) updateHero(w http.ResponseWriter, r *http.Request, player datab
 	}
 
 	// Update fields
-	hero.Country = req.Country
+	hero.Country = geolookup.GetClientCountry(r)
 	hero.Title = req.Title
 	hero.Description = req.Description
 
@@ -201,9 +200,7 @@ func (s *Server) patchHero(w http.ResponseWriter, r *http.Request, player databa
 	}
 
 	// Update only provided fields
-	if req.Country != nil {
-		hero.Country = *req.Country
-	}
+	hero.Country = geolookup.GetClientCountry(r)
 	if req.Title != nil {
 		hero.Title = *req.Title
 	}
