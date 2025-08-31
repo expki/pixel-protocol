@@ -15,6 +15,7 @@ import (
 	"github.com/expki/backend/pixel-protocol/config"
 	"github.com/expki/backend/pixel-protocol/database"
 	"github.com/expki/backend/pixel-protocol/logger"
+	"github.com/expki/backend/pixel-protocol/server"
 	"github.com/klauspost/compress/zstd"
 	"github.com/quic-go/quic-go/http3"
 	"go.uber.org/zap"
@@ -73,7 +74,7 @@ func main() {
 
 	// Server
 	logger.Sugar().Info("Loading Server...")
-	// TODO: servers
+	srv := server.New(db)
 
 	// Create mux
 	mux := http.NewServeMux()
@@ -175,7 +176,7 @@ func main() {
 	}
 
 	// Routes: API
-	mux.Handle("/api/upload", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(nil)))))
+	mux.Handle("/api/player/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.HandlePlayer)))))
 
 	// Routes: Static
 	static := http.FileServerFS(distZstd)

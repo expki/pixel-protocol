@@ -16,6 +16,7 @@ type Player struct {
 
 type Hero struct {
 	ID          uuid.UUID `gorm:"primarykey"`
+	Country     string    `gorm:"index:idx_hero_country;not null"`
 	Elo         uint32    `gorm:"index:idx_hero_elo;not null"`
 	Title       string    `gorm:"not null"`
 	Description string    `gorm:"not null"`
