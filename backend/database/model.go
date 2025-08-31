@@ -32,7 +32,7 @@ type Fight struct {
 	Attacker   *Hero        `gorm:"foreignKey:AttackerID"`
 	DefenderID uuid.UUID    `gorm:"not null"`
 	Defender   *Hero        `gorm:"foreignKey:DefenderID"`
-	TimeStamp  time.Time    `gorm:"not null"`
+	Timestamp  time.Time    `gorm:"index:idx_fight_timestamp;not null"`
 	Outcome    FightOutcome `gorm:"not null"`
 }
 

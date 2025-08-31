@@ -176,8 +176,22 @@ func main() {
 	}
 
 	// Routes: API
-	mux.Handle("/api/player/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.HandlePlayer)))))
-	mux.Handle("/api/hero/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.HandleHero)))))
+	mux.Handle("/api/player/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if it's a fight-related endpoint
+		if strings.Contains(r.URL.Path, "/fight") {
+			srv.HandlePlayerFights(w, r)
+		} else {
+			srv.HandlePlayer(w, r)
+		}
+	})))))
+	mux.Handle("/api/hero/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if it's a fight-related endpoint
+		if strings.Contains(r.URL.Path, "/fight") {
+			srv.HandleHeroFights(w, r)
+		} else {
+			srv.HandleHero(w, r)
+		}
+	})))))
 
 	// Routes: Static
 	static := http.FileServerFS(distZstd)
