@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"strings"
@@ -335,23 +337,37 @@ type FightResult struct {
 }
 
 func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attackerID uuid.UUID) {
-	// Parse request body for secret
-	var req PlayerSecret
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.Secret == "" {
-		http.Error(w, "Secret is required", http.StatusBadRequest)
-		return
-	}
-
-	// Parse secret as UUID
-	secret, err := uuid.Parse(req.Secret)
+	// Read body to buffer so we can use it multiple times
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Invalid secret", http.StatusBadRequest)
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Extract secret from body or cookie
+	var secret uuid.UUID
+	var secretStruct PlayerSecret
+	
+	// Try to parse secret from JSON body first
+	if len(bodyBytes) > 0 {
+		if err := json.Unmarshal(bodyBytes, &secretStruct); err == nil && secretStruct.Secret != "" {
+			secret, err = uuid.Parse(secretStruct.Secret)
+			if err != nil {
+				http.Error(w, "Invalid player _secret", http.StatusBadRequest)
+				return
+			}
+		}
+	}
+	
+	// Fallback to cookie if no secret in body
+	if secret == uuid.Nil {
+		var cookieErr error
+		secret, cookieErr = s.extractSecretFromCookie(r)
+		if cookieErr != nil {
+			http.Error(w, "Player secret required (provide _secret in body or login)", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	// Get the attacker hero and verify ownership

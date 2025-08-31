@@ -1,7 +1,15 @@
 openapi: 3.0.3
 info:
   title: Pixel Protocol API
-  description: Backend API for Pixel Protocol game with hero management and battles
+  description: |
+    Backend API for Pixel Protocol game with hero management and battles.
+    
+    ## Authentication
+    Most endpoints require player authentication via:
+    1. **Request Body**: Include `_secret` field with player's UUID secret (primary method)
+    2. **Cookie**: Use `player_secret` cookie set by hero creation (fallback method)
+    
+    When creating a hero, a secure `player_secret` cookie is automatically set for subsequent requests.
   version: 1.0.0
   contact:
     name: API Support
@@ -173,6 +181,9 @@ paths:
   /api/hero:
     post:
       summary: Create a new hero
+      description: |
+        Creates a new hero and sets a secure `player_secret` cookie for future authentication.
+        This cookie can be used instead of providing `_secret` in request bodies for subsequent requests.
       tags:
         - Hero
       requestBody:
@@ -198,7 +209,12 @@ paths:
                   description: Player's secret for authentication
       responses:
         '201':
-          description: Hero created successfully
+          description: Hero created successfully and authentication cookie set
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "player_secret=uuid-value; Path=/; HttpOnly; Secure; SameSite=Strict"
           content:
             application/json:
               schema:
@@ -396,11 +412,19 @@ paths:
             format: uuid
           description: Attacker hero ID
       requestBody:
-        required: true
+        required: false
+        description: |
+          Authentication can be provided via request body OR cookie.
+          If no `_secret` is provided in the body, the `player_secret` cookie will be used.
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SecretRequest'
+              type: object
+              properties:
+                _secret:
+                  type: string
+                  format: uuid
+                  description: Player's secret (optional if cookie is set)
       responses:
         '201':
           description: Fight completed successfully with AI-generated narrative
@@ -599,6 +623,21 @@ paths:
           description: Fight or player not found
 
 components:
+  securitySchemes:
+    PlayerSecret:
+      type: apiKey
+      in: header
+      name: Cookie
+      description: |
+        Player authentication via secure cookie. Cookie is automatically set when creating a hero.
+        Cookie name: `player_secret`
+    PlayerSecretBody:
+      type: http
+      scheme: bearer
+      description: |
+        Player authentication via request body. Include `_secret` field with player's UUID secret.
+        Takes precedence over cookie authentication.
+
   schemas:
     Player:
       type: object

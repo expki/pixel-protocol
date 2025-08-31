@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -27,21 +29,40 @@ func (s *Server) HandleHero(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/hero")
 	segments := strings.Split(strings.Trim(path, "/"), "/")
 
+	// Read body to buffer so we can use it multiple times
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Extract secret from body or cookie
+	var secret uuid.UUID
 	var secretStruct PlayerSecret
-	err := json.NewDecoder(r.Body).Decode(&secretStruct)
-	if err != nil {
-		http.Error(w, "Missing player _secret", http.StatusBadRequest)
-		return
+
+	// Try to parse secret from JSON body first
+	if len(bodyBytes) > 0 {
+		if err := json.Unmarshal(bodyBytes, &secretStruct); err == nil && secretStruct.Secret != "" {
+			secret, err = uuid.Parse(secretStruct.Secret)
+			if err != nil {
+				http.Error(w, "Invalid player _secret", http.StatusBadRequest)
+				return
+			}
+		}
 	}
-	if secretStruct.Secret == "" {
-		http.Error(w, "Secret is required", http.StatusBadRequest)
-		return
+
+	// Fallback to cookie if no secret in body
+	if secret == uuid.Nil {
+		var cookieErr error
+		secret, cookieErr = s.extractSecretFromCookie(r)
+		if cookieErr != nil {
+			http.Error(w, "Player secret required (provide _secret in body or login)", http.StatusUnauthorized)
+			return
+		}
 	}
-	secret, err := uuid.Parse(secretStruct.Secret)
-	if err != nil {
-		http.Error(w, "Invalid player _secret", http.StatusBadRequest)
-		return
-	}
+
+	// Find player by secret
 	var player database.Player
 	result := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("secret = ? AND deleted_at IS NULL", secret).First(&player)
 	if result.Error != nil {
@@ -53,6 +74,9 @@ func (s *Server) HandleHero(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Reset body for downstream handlers
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	if r.Method == http.MethodPost {
 		s.createHero(w, r, player)
@@ -127,6 +151,9 @@ func (s *Server) createHero(w http.ResponseWriter, r *http.Request, player datab
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	// Set the player secret as a secure cookie
+	s.setPlayerSecretCookie(r, w, player.Secret)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
