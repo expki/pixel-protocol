@@ -396,6 +396,7 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 		DefenderID: defender.ID,
 		Timestamp:  time.Now(),
 		Outcome:    outcome,
+		Transcript: "", // TODO: create transcript
 	}
 
 	// Start transaction to update ELOs and create fight

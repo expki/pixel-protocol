@@ -1,0 +1,651 @@
+openapi: 3.0.3
+info:
+  title: Pixel Protocol API
+  description: Backend API for Pixel Protocol game with hero management and battles
+  version: 1.0.0
+  contact:
+    name: API Support
+    
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.pixelprotocol.com
+    description: Production server
+
+paths:
+  /api/player:
+    post:
+      summary: Create a new player
+      tags:
+        - Player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+              properties:
+                username:
+                  type: string
+                  description: Player's username
+                  example: "JohnDoe"
+      responses:
+        '201':
+          description: Player created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+        '400':
+          description: Invalid request
+        '409':
+          description: Username already exists with this suffix
+        '500':
+          description: Internal server error
+
+  /api/player/{id}:
+    get:
+      summary: Get player by ID
+      tags:
+        - Player
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Player UUID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretRequest'
+      responses:
+        '200':
+          description: Player details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+        '404':
+          description: Player not found
+          
+    put:
+      summary: Update player (full update)
+      tags:
+        - Player
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - _secret
+              properties:
+                username:
+                  type: string
+                _secret:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Player updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+        '404':
+          description: Player not found
+        '409':
+          description: Username conflict
+          
+    patch:
+      summary: Update player (partial update)
+      tags:
+        - Player
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - _secret
+              properties:
+                username:
+                  type: string
+                _secret:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Player updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+        '404':
+          description: Player not found
+          
+    delete:
+      summary: Soft delete player
+      tags:
+        - Player
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretRequest'
+      responses:
+        '204':
+          description: Player deleted
+        '404':
+          description: Player not found
+
+  /api/hero:
+    post:
+      summary: Create a new hero
+      tags:
+        - Hero
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - description
+                - _secret
+              properties:
+                title:
+                  type: string
+                  example: "Dragon Slayer"
+                description:
+                  type: string
+                  example: "A mighty warrior who defeats dragons"
+                _secret:
+                  type: string
+                  format: uuid
+                  description: Player's secret for authentication
+      responses:
+        '201':
+          description: Hero created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hero'
+        '400':
+          description: Invalid request
+        '401':
+          description: Invalid secret
+        '500':
+          description: Internal server error
+
+  /api/hero/{id}:
+    get:
+      summary: Get hero by ID
+      tags:
+        - Hero
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretRequest'
+      responses:
+        '200':
+          description: Hero details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hero'
+        '404':
+          description: Hero not found
+          
+    put:
+      summary: Update hero (full update)
+      tags:
+        - Hero
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - description
+                - _secret
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                _secret:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Hero updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hero'
+        '404':
+          description: Hero not found
+        '401':
+          description: Unauthorized
+          
+    patch:
+      summary: Update hero (partial update)
+      tags:
+        - Hero
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - _secret
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                _secret:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Hero updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hero'
+        '404':
+          description: Hero not found
+        '401':
+          description: Unauthorized
+          
+    delete:
+      summary: Soft delete hero
+      tags:
+        - Hero
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretRequest'
+      responses:
+        '204':
+          description: Hero deleted
+        '404':
+          description: Hero not found
+        '401':
+          description: Unauthorized
+
+  /api/hero/{id}/image:
+    get:
+      summary: Get hero avatar image
+      tags:
+        - Hero
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Hero image (PNG)
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=3600"
+            ETag:
+              schema:
+                type: string
+        '304':
+          description: Not Modified (cached)
+        '404':
+          description: Hero not found
+
+  /api/hero/{id}/fight:
+    post:
+      summary: Start a fight with another hero
+      tags:
+        - Fight
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Attacker hero ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretRequest'
+      responses:
+        '201':
+          description: Fight completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FightResult'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Hero or opponent not found
+
+  /api/hero/{id}/fights:
+    get:
+      summary: Get all fights for a hero
+      tags:
+        - Fight
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: last_id
+          schema:
+            type: string
+            format: uuid
+          description: Last fight ID for pagination
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of results per page
+      responses:
+        '200':
+          description: List of fights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FightsResponse'
+        '404':
+          description: Hero not found
+
+  /api/hero/{heroId}/fight/{fightId}:
+    get:
+      summary: Get specific fight details
+      tags:
+        - Fight
+      parameters:
+        - in: path
+          name: heroId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: fightId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Fight details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fight'
+        '404':
+          description: Fight or hero not found
+
+  /api/player/{id}/fights:
+    get:
+      summary: Get all fights for a player's heroes
+      tags:
+        - Fight
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: last_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of fights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FightsResponse'
+        '404':
+          description: Player not found
+
+  /api/player/{playerId}/fight/{fightId}:
+    get:
+      summary: Get specific fight for a player
+      tags:
+        - Fight
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: fightId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Fight details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fight'
+        '404':
+          description: Fight or player not found
+
+components:
+  schemas:
+    Player:
+      type: object
+      properties:
+        ID:
+          type: string
+          format: uuid
+        UserName:
+          type: string
+        UserNameSuffix:
+          type: integer
+          format: int32
+        Secret:
+          type: string
+          format: uuid
+        DeletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          
+    Hero:
+      type: object
+      properties:
+        ID:
+          type: string
+          format: uuid
+        Country:
+          type: string
+          example: "US"
+        Elo:
+          type: integer
+          format: int32
+          example: 1000
+        Title:
+          type: string
+        Description:
+          type: string
+        PlayerID:
+          type: string
+          format: uuid
+        Player:
+          $ref: '#/components/schemas/Player'
+        DeletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          
+    Fight:
+      type: object
+      properties:
+        ID:
+          type: string
+          format: uuid
+        AttackerID:
+          type: string
+          format: uuid
+        Attacker:
+          $ref: '#/components/schemas/Hero'
+        DefenderID:
+          type: string
+          format: uuid
+        Defender:
+          $ref: '#/components/schemas/Hero'
+        Timestamp:
+          type: string
+          format: date-time
+        Outcome:
+          type: integer
+          description: "0=Draw, 1=Victory, 2=Defeat"
+          enum: [0, 1, 2]
+        Transcript:
+          type: string
+          description: "Fight transcript/log"
+          
+    FightResult:
+      type: object
+      properties:
+        fight:
+          $ref: '#/components/schemas/Fight'
+        victory:
+          type: boolean
+        elo_gain:
+          type: integer
+          format: int32
+          
+    FightsResponse:
+      type: object
+      properties:
+        fights:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fight'
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
+          format: uuid
+          
+    SecretRequest:
+      type: object
+      required:
+        - _secret
+      properties:
+        _secret:
+          type: string
+          format: uuid
+          description: Player's secret for authentication
+
+tags:
+  - name: Player
+    description: Player management operations
+  - name: Hero
+    description: Hero management operations
+  - name: Fight
+    description: Battle and fight operations

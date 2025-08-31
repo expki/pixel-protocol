@@ -34,6 +34,7 @@ type Fight struct {
 	Defender   *Hero        `gorm:"foreignKey:DefenderID"`
 	Timestamp  time.Time    `gorm:"index:idx_fight_timestamp;not null"`
 	Outcome    FightOutcome `gorm:"not null"`
+	Transcript string       `gorm:"not null"`
 }
 
 func (f Fight) OutcomeAttacker() FightOutcome {

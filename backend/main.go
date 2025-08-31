@@ -175,6 +175,12 @@ func main() {
 		})
 	}
 
+	// Routes: Swagger documentation
+	mux.HandleFunc("/swagger", srv.HandleSwagger)
+	mux.HandleFunc("/swagger/", srv.HandleSwagger)
+	mux.HandleFunc("/swagger/swagger.json", srv.HandleSwagger)
+	mux.HandleFunc("/swagger/swagger.yaml", srv.HandleSwagger)
+
 	// Routes: API
 	mux.Handle("/api/player/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check if it's a fight-related endpoint
