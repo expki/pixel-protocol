@@ -1,6 +1,15 @@
-import { Hero, Player, CreateHeroRequest, CreatePlayerRequest, FightResult, FightsResponse, Fight } from '../types/api';
+import type { Hero, Player, FightResult, FightsResponse, Fight } from '../types/api';
 
 const API_BASE = '/api';
+
+interface CreateHeroRequest {
+  title: string;
+  description: string;
+}
+
+interface CreatePlayerRequest {
+  username: string;
+}
 
 class ApiService {
   private getHeaders(includeSecret = true): HeadersInit {

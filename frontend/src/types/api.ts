@@ -40,15 +40,6 @@ export interface FightsResponse {
   next_cursor?: string;
 }
 
-export interface CreateHeroRequest {
-  title: string;
-  description: string;
-}
-
-export interface CreatePlayerRequest {
-  username: string;
-}
-
 export interface SecretRequest {
   _secret: string;
 }
