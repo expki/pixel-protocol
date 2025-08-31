@@ -16,6 +16,7 @@ import (
 	"github.com/expki/backend/pixel-protocol/database"
 	"github.com/expki/backend/pixel-protocol/logger"
 	"github.com/klauspost/compress/zstd"
+	"github.com/quic-go/quic-go/http3"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 )
@@ -98,12 +99,34 @@ func main() {
 		logger.Sugar().Fatalf("http2.Server: %v", err)
 	}
 
+	// HTTP3 (QUIC)
+	server3 := http3.Server{
+		Handler: mux,
+		Addr:    cfg.Server.Http3Address,
+		TLSConfig: &tls.Config{
+			GetCertificate: cfg.TLS.GetCertificate,
+			ClientAuth:     tls.NoClientCert,
+			NextProtos:     []string{"h3"}, // Enable HTTP/3
+		},
+		QUICConfig: nil, // Use default QUIC configuration
+	}
+
 	// Headers middleware
 	middlewareHeaders := func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// WASM headers
-			w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
-			w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
+			// Advertise HTTP/3 support via Alt-Svc header
+			// Use the same host and port that the client connected to
+			// Since HTTP/2 and HTTP/3 run on the same port (typically 443)
+			if r.TLS != nil {
+				// Only advertise HTTP/3 for HTTPS connections
+				// Extract port from the Host header, default to 443 if not specified
+				host := r.Host
+				port := "443"
+				if colonPos := strings.LastIndex(host, ":"); colonPos != -1 {
+					port = host[colonPos+1:]
+				}
+				w.Header().Set("Alt-Svc", `h3=":`+port+`"; ma=86400`)
+			}
 			h.ServeHTTP(w, r)
 		})
 	}
@@ -172,6 +195,15 @@ func main() {
 		}
 		close(server2Done)
 	}()
+	server3Done := make(chan struct{})
+	go func() {
+		logger.Sugar().Infof("HTTP3 (QUIC) server starting on %s", cfg.Server.Http3Address)
+		err := server3.ListenAndServe()
+		if err != nil {
+			logger.Sugar().Errorf("ListenAndServe http3: %v", err)
+		}
+		close(server3Done)
+	}()
 
 	// Interrupt signal
 	interrupt := make(chan os.Signal, 1)
@@ -187,12 +219,15 @@ func main() {
 		logger.Sugar().Info("HTTP server stopped")
 	case <-server2Done:
 		logger.Sugar().Info("HTTP2 server stopped")
+	case <-server3Done:
+		logger.Sugar().Info("HTTP3 server stopped")
 	}
 	logger.Sugar().Info("Server shutting down")
 	shutdownCtx, cancelShutdown := context.WithTimeout(appCtx, 3*time.Second)
 	defer cancelShutdown()
 	server.Shutdown(shutdownCtx)
 	server2.Shutdown(shutdownCtx)
+	server3.Close()
 	server.Close()
 	server2.Close()
 	stopApp()

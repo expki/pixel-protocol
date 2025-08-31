@@ -24,4 +24,5 @@ type Config struct {
 type ConfigServer struct {
 	HttpAddress  string `json:"http_address"`
 	HttpsAddress string `json:"https_address"`
+	Http3Address string `json:"http3_address"`
 }

@@ -10,8 +10,9 @@ import (
 func CreateSample(path string) error {
 	sample := Config{
 		Server: ConfigServer{
-			HttpAddress:  ":7500",
-			HttpsAddress: ":7501",
+			HttpAddress:  ":80",
+			HttpsAddress: ":443",
+			Http3Address: ":443",
 		},
 		TLS: ConfigTLS{
 			DomainNameServer: []string{},
