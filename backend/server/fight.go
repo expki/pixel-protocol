@@ -357,11 +357,17 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 	// Get the attacker hero and verify ownership
 	var attacker database.Hero
 	err = s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).
-		Where("id = ? AND secret = ? AND deleted_at IS NULL", attackerID, secret).
+		Where("id = ? AND deleted_at IS NULL", attackerID).
 		Preload("Player").
 		First(&attacker).Error
 	if err != nil {
 		http.Error(w, "Hero not found", http.StatusNotFound)
+		return
+	}
+
+	// Verify the player owns this hero via secret
+	if attacker.Player == nil || attacker.Player.Secret != secret {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 

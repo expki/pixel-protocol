@@ -185,9 +185,11 @@ func main() {
 		}
 	})))))
 	mux.Handle("/api/hero/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if it's a fight-related endpoint
+		// Check if it's a fight-related endpoint or image endpoint
 		if strings.Contains(r.URL.Path, "/fight") {
 			srv.HandleHeroFights(w, r)
+		} else if strings.Contains(r.URL.Path, "/image") {
+			srv.HandleHeroImage(w, r)
 		} else {
 			srv.HandleHero(w, r)
 		}
