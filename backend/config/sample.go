@@ -21,6 +21,10 @@ func CreateSample(path string) error {
 		},
 		Database: sampleDatabase,
 		LogLevel: LogLevelInfo,
+		Claude: ConfigClaude{
+			APIKey: "your-claude-api-key-here",
+			Model:  "claude-3-5-sonnet-20241022",
+		},
 	}
 	raw, err := json.MarshalIndent(sample, "", "    ")
 	if err != nil {

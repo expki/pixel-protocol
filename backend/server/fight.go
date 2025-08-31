@@ -379,15 +379,31 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 		return
 	}
 
-	// Simple 50/50 random fight outcome
-	// TODO: proper fights
-	outcome := database.FightOutcome_Defeat
-	if randomBool() {
-		outcome = database.FightOutcome_Victory
+	// Generate combat narrative using Claude API
+	narrative, outcome, err := s.claude.GenerateCombatNarrative(r.Context(), attacker, defender)
+
+	// Fallback to random outcome if Claude fails
+	if err != nil {
+		logger.Sugar().Warnf("Failed to generate narrative via Claude: %v, falling back to random", err)
+		narrative = fmt.Sprintf("In a clash of creativity, %s faced %s in a battle beyond logic.", attacker.Title, defender.Title)
+
+		// Pure chaos fallback - random outcome
+		rand := randomBool()
+		rand2 := randomBool()
+		if rand && rand2 {
+			outcome = database.FightOutcome_Victory
+			narrative += fmt.Sprintf(" Through sheer absurdity, %s claimed an impossible victory!", attacker.Title)
+		} else if !rand && !rand2 {
+			outcome = database.FightOutcome_Defeat
+			narrative += fmt.Sprintf(" Against all reason, %s emerged triumphant!", defender.Title)
+		} else {
+			outcome = database.FightOutcome_Draw
+			narrative += " The universe itself couldn't decide who was more creative, resulting in a cosmic draw."
+		}
 	}
 
 	// Calculate ELO changes using standard ELO formula
-	eloGain := calculateEloChange(attacker.Elo, defender.Elo, outcome == database.FightOutcome_Victory)
+	eloGain := calculateEloChange(attacker.Elo, defender.Elo, outcome)
 
 	// Create fight record
 	fight := database.Fight{
@@ -396,7 +412,7 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 		DefenderID: defender.ID,
 		Timestamp:  time.Now(),
 		Outcome:    outcome,
-		Transcript: "", // TODO: create transcript
+		Transcript: narrative,
 	}
 
 	// Start transaction to update ELOs and create fight
@@ -412,12 +428,12 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 
 	// Update attacker ELO
 	newAttackerElo := attacker.Elo
-	if outcome == database.FightOutcome_Victory {
+	if eloGain > 0 {
 		newAttackerElo = uint32(int32(attacker.Elo) + eloGain)
 	} else {
 		// Ensure ELO doesn't go below 0
-		if int32(attacker.Elo) > eloGain {
-			newAttackerElo = uint32(int32(attacker.Elo) - eloGain)
+		if int32(attacker.Elo) > -eloGain {
+			newAttackerElo = uint32(int32(attacker.Elo) + eloGain)
 		} else {
 			newAttackerElo = 0
 		}
@@ -431,18 +447,19 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 		return
 	}
 
-	// Update defender ELO (opposite of attacker)
+	// Update defender ELO (opposite change from attacker)
+	// In ELO system, what one player gains, the other loses
 	newDefenderElo := defender.Elo
-	if outcome == database.FightOutcome_Victory {
-		// Attacker won, defender loses ELO
+	if eloGain > 0 {
+		// Attacker gains, defender loses
 		if int32(defender.Elo) > eloGain {
 			newDefenderElo = uint32(int32(defender.Elo) - eloGain)
 		} else {
 			newDefenderElo = 0
 		}
 	} else {
-		// Attacker lost, defender gains ELO
-		newDefenderElo = uint32(int32(defender.Elo) + eloGain)
+		// Attacker loses (negative eloGain), defender gains
+		newDefenderElo = uint32(int32(defender.Elo) - eloGain) // Subtracting negative = adding
 	}
 
 	if err := tx.Model(&database.Hero{}).Where("id = ?", defender.ID).
@@ -473,16 +490,17 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 		Victory: outcome == database.FightOutcome_Victory,
 		EloGain: eloGain,
 	}
-	if outcome == database.FightOutcome_Defeat {
-		result.EloGain = -eloGain
-	}
+	// EloGain is already correctly calculated:
+	// - Positive for wins against stronger opponents or draws against much stronger opponents
+	// - Negative for losses or draws against weaker opponents
+	// - The calculateEloChange function handles all cases correctly
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(result)
 }
 
-func (s *Server) findOpponent(ctx context.Context, attacker database.Hero) (*database.Hero, error) {
+func (s *Server) findOpponent(ctx context.Context, attacker database.Hero) (database.Hero, error) {
 	// Define ELO range for matchmaking (±200 ELO points)
 	eloRange := uint32(200)
 	minElo := attacker.Elo
@@ -502,9 +520,9 @@ func (s *Server) findOpponent(ctx context.Context, attacker database.Hero) (*dat
 			Order("RANDOM()"). // Random selection for variety
 			Take(&opponentLocal).Error
 		if errLocal != nil && !errors.Is(errLocal, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("database error: %w", errLocal)
+			return database.Hero{}, fmt.Errorf("database error: %w", errLocal)
 		} else if errLocal == nil {
-			return &opponentLocal, nil
+			return opponentLocal, nil
 		}
 	}
 
@@ -515,27 +533,32 @@ func (s *Server) findOpponent(ctx context.Context, attacker database.Hero) (*dat
 		Order("RANDOM()"). // Random selection for variety
 		Take(&opponentGlobal).Error
 	if errGlobal != nil && !errors.Is(errGlobal, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("database error: %w", errGlobal)
+		return database.Hero{}, fmt.Errorf("database error: %w", errGlobal)
 	} else if errors.Is(errGlobal, gorm.ErrRecordNotFound) {
 		errGlobal = s.db.DB.Clauses(dbresolver.Read).WithContext(ctx).
 			Where("id != ? AND deleted_at IS NULL", attacker.ID).
 			Order("RANDOM()"). // Just pick a random opponent if none in range
 			First(&opponentGlobal).Error
 	}
-	return &opponentGlobal, errGlobal
+	return opponentGlobal, errGlobal
 }
 
-func calculateEloChange(attackerElo, defenderElo uint32, won bool) int32 {
+func calculateEloChange(attackerElo, defenderElo uint32, outcome database.FightOutcome) int32 {
 	// K-factor (determines how much ratings can change)
 	K := float64(32)
 
 	// Expected score based on ELO difference
 	expectedScore := 1 / (1 + math.Pow(10, float64(defenderElo-attackerElo)/400))
 
-	// Actual score (1 for win, 0 for loss)
+	// Actual score (1 for win, 0.5 for draw, 0 for loss)
 	actualScore := 0.0
-	if won {
+	switch outcome {
+	case database.FightOutcome_Victory:
 		actualScore = 1.0
+	case database.FightOutcome_Draw:
+		actualScore = 0.5
+	case database.FightOutcome_Defeat:
+		actualScore = 0.0
 	}
 
 	// Calculate ELO change

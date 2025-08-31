@@ -379,6 +379,12 @@ paths:
   /api/hero/{id}/fight:
     post:
       summary: Start a fight with another hero
+      description: |
+        Initiates a battle between the attacker hero and a randomly selected opponent.
+        The fight outcome is determined by Claude AI based on the CREATIVITY of hero descriptions,
+        not power levels or logic. More creative, unique, and entertaining descriptions have better
+        chances of winning! The AI generates a whimsical combat narrative where imagination triumphs
+        over reason. Fights can result in Victory, Defeat, or Draw.
       tags:
         - Fight
       parameters:
@@ -397,7 +403,7 @@ paths:
               $ref: '#/components/schemas/SecretRequest'
       responses:
         '201':
-          description: Fight completed
+          description: Fight completed successfully with AI-generated narrative
           content:
             application/json:
               schema:
@@ -602,11 +608,11 @@ components:
           format: date-time
         Outcome:
           type: integer
-          description: "0=Draw, 1=Victory, 2=Defeat"
+          description: "Fight outcome from attacker's perspective: 0=Draw, 1=Victory, 2=Defeat"
           enum: [0, 1, 2]
         Transcript:
           type: string
-          description: "Fight transcript/log"
+          description: "AI-generated combat narrative describing the battle"
           
     FightResult:
       type: object

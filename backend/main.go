@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/expki/backend/pixel-protocol/claude"
 	"github.com/expki/backend/pixel-protocol/config"
 	"github.com/expki/backend/pixel-protocol/database"
 	"github.com/expki/backend/pixel-protocol/logger"
@@ -72,9 +73,13 @@ func main() {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}
 
+	// Claude Client
+	logger.Sugar().Info("Loading Claude client...")
+	claudeClient := claude.NewClient(cfg.Claude.APIKey, cfg.Claude.Model)
+
 	// Server
 	logger.Sugar().Info("Loading Server...")
-	srv := server.New(db)
+	srv := server.New(db, claudeClient)
 
 	// Create mux
 	mux := http.NewServeMux()
