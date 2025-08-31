@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { PlayerProvider } from './context/PlayerContext';
+import { Navigation } from './components/Navigation';
 import { HeroList } from './components/HeroList';
 import { HeroView } from './components/HeroView';
-import { Hero } from './types/api';
+import type { Hero } from './types/api';
 import './App.css';
 
 function App() {
@@ -19,15 +20,16 @@ function App() {
     setSelectedHero(null);
   };
 
+  const handleNavigate = (view: 'list' | 'hero') => {
+    if (view === 'list') {
+      handleBackToList();
+    }
+  };
+
   return (
     <PlayerProvider>
       <div className="app">
-        <header className="app-header">
-          <div className="app-title">
-            <h1>🎮 Pixel Protocol</h1>
-            <p>Battle Arena</p>
-          </div>
-        </header>
+        <Navigation currentView={currentView} onNavigate={handleNavigate} />
         
         <main className="app-main">
           {currentView === 'list' && (

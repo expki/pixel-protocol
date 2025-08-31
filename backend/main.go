@@ -120,6 +120,18 @@ func main() {
 	// Headers middleware
 	middlewareHeaders := func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// CORS headers for development
+			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5081")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			// Handle preflight requests
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
 			// Advertise HTTP/3 support via Alt-Svc header
 			// Use the same host and port that the client connected to
 			// Since HTTP/2 and HTTP/3 run on the same port (typically 443)
@@ -187,15 +199,15 @@ func main() {
 	mux.HandleFunc("/swagger/swagger.yaml", srv.HandleSwagger)
 
 	// Routes: API
-	mux.Handle("/api/player/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	playerHandler := middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check if it's a fight-related endpoint
 		if strings.Contains(r.URL.Path, "/fight") {
 			srv.HandlePlayerFights(w, r)
 		} else {
 			srv.HandlePlayer(w, r)
 		}
-	})))))
-	mux.Handle("/api/hero/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	}))))
+	heroHandler := middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check for fight image endpoint first (most specific)
 		if strings.Contains(r.URL.Path, "/fight/") && strings.Contains(r.URL.Path, "/image") {
 			srv.HandleFightImage(w, r)
@@ -206,7 +218,12 @@ func main() {
 		} else {
 			srv.HandleHero(w, r)
 		}
-	})))))
+	}))))
+
+	mux.Handle("/api/player", playerHandler)
+	mux.Handle("/api/player/", playerHandler)
+	mux.Handle("/api/hero", heroHandler)
+	mux.Handle("/api/hero/", heroHandler)
 
 	// Routes: Static
 	static := http.FileServerFS(distZstd)

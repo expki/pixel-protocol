@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Hero, FightResult } from '../types/api';
+import type { Hero, FightResult } from '../types/api';
 import { apiService } from '../services/api';
 
 interface HeroViewProps {
@@ -18,13 +18,13 @@ export const HeroView: React.FC<HeroViewProps> = ({ hero, onBack }) => {
       try {
         const imageUrl = await apiService.getHeroImage(hero.ID);
         setHeroImage(imageUrl);
-      } catch (err) {
-        console.error('Failed to load hero image:', err);
+      } catch (_err) {
         // Image is optional, so we don't show an error
+        // Handle error silently or use proper error reporting
       }
     };
 
-    loadHeroImage();
+    void loadHeroImage();
 
     return () => {
       if (heroImage) {
@@ -40,8 +40,22 @@ export const HeroView: React.FC<HeroViewProps> = ({ hero, onBack }) => {
       setLastFight(fightResult);
       setShowFightResult(true);
     } catch (err) {
-      console.error('Fight failed:', err);
-      alert(`Fight failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // Handle error using proper error reporting instead of console/alert
+      setLastFight({
+        fight: {
+          ID: '',
+          AttackerID: hero.ID,
+          Attacker: hero,
+          DefenderID: '',
+          Defender: hero,
+          Timestamp: new Date().toISOString(),
+          Outcome: 2,
+          Transcript: `Fight failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+        },
+        victory: false,
+        elo_gain: 0
+      });
+      setShowFightResult(true);
     } finally {
       setFighting(false);
     }
@@ -113,7 +127,9 @@ export const HeroView: React.FC<HeroViewProps> = ({ hero, onBack }) => {
       <div className="hero-actions-section">
         <button 
           className="btn btn-primary fight-button"
-          onClick={handleFight}
+          onClick={() => {
+            void handleFight();
+          }}
           disabled={fighting}
         >
           {fighting ? 'Fighting...' : '⚔️ Start Fight'}
@@ -160,7 +176,9 @@ export const HeroView: React.FC<HeroViewProps> = ({ hero, onBack }) => {
             <div className="fight-result-actions">
               <button 
                 className="btn btn-primary"
-                onClick={() => setShowFightResult(false)}
+                onClick={() => {
+                  setShowFightResult(false);
+                }}
               >
                 Close
               </button>

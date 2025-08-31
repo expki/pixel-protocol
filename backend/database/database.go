@@ -53,6 +53,7 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 	err = godb.Clauses(dbresolver.Write).AutoMigrate(
 		&Player{},
 		&Hero{},
+		&Fight{},
 	)
 	if err != nil {
 		logger.Sugar().Errorf("failed to migrate database: %v", err)

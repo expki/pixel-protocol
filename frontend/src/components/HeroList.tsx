@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Hero } from '../types/api';
-import { usePlayer } from '../context/PlayerContext';
+import type { Hero } from '../types/api';
+import { usePlayer } from '../hooks/usePlayer';
 
 interface HeroListProps {
   onSelectHero: (hero: Hero) => void;
@@ -15,7 +15,9 @@ export const HeroList: React.FC<HeroListProps> = ({ onSelectHero }) => {
 
   const handleCreateHero = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim()) return;
+    if (!title.trim() || !description.trim()) {
+      return;
+    }
 
     setCreating(true);
     try {
@@ -24,8 +26,8 @@ export const HeroList: React.FC<HeroListProps> = ({ onSelectHero }) => {
       setDescription('');
       setShowCreateForm(false);
       await refreshHeroes();
-    } catch (err) {
-      console.error('Failed to create hero:', err);
+    } catch (_err) {
+      // Handle error silently or use proper error reporting
     } finally {
       setCreating(false);
     }
@@ -55,7 +57,9 @@ export const HeroList: React.FC<HeroListProps> = ({ onSelectHero }) => {
         <h1>Your Heroes</h1>
         <button 
           className="btn btn-primary"
-          onClick={() => setShowCreateForm(!showCreateForm)}
+          onClick={() => {
+            setShowCreateForm(!showCreateForm);
+          }}
           disabled={creating}
         >
           Create New Hero
@@ -65,14 +69,18 @@ export const HeroList: React.FC<HeroListProps> = ({ onSelectHero }) => {
       {showCreateForm && (
         <div className="create-hero-form">
           <h3>Create a New Hero</h3>
-          <form onSubmit={handleCreateHero}>
+          <form onSubmit={(e) => {
+            void handleCreateHero(e);
+          }}>
             <div className="form-group">
               <label htmlFor="title">Hero Title:</label>
               <input
                 id="title"
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                }}
                 placeholder="e.g., Dragon Slayer, Shadow Ninja..."
                 required
                 disabled={creating}
@@ -83,7 +91,9 @@ export const HeroList: React.FC<HeroListProps> = ({ onSelectHero }) => {
               <textarea
                 id="description"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                }}
                 placeholder="Describe your hero's abilities, background, and unique traits. Be creative - more creative heroes win more fights!"
                 rows={4}
                 required
@@ -101,7 +111,9 @@ export const HeroList: React.FC<HeroListProps> = ({ onSelectHero }) => {
               <button 
                 type="button" 
                 className="btn btn-secondary"
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => {
+                  setShowCreateForm(false);
+                }}
                 disabled={creating}
               >
                 Cancel
@@ -133,7 +145,9 @@ export const HeroList: React.FC<HeroListProps> = ({ onSelectHero }) => {
               <div className="hero-actions">
                 <button 
                   className="btn btn-primary"
-                  onClick={() => onSelectHero(hero)}
+                  onClick={() => {
+                    onSelectHero(hero);
+                  }}
                 >
                   View Hero
                 </button>

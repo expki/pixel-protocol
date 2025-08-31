@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Player, Hero } from '../types/api';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
+import type { ReactNode } from 'react';
+import type { Player, Hero } from '../types/api';
 import { apiService } from '../services/api';
 
-interface PlayerContextType {
+export interface PlayerContextType {
   player: Player | null;
   heroes: Hero[];
   currentHero: Hero | null;
@@ -14,7 +15,8 @@ interface PlayerContextType {
   refreshHeroes: () => Promise<void>;
 }
 
-const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
+// eslint-disable-next-line react-refresh/only-export-components
+export const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 
 interface PlayerProviderProps {
   children: ReactNode;
@@ -30,76 +32,74 @@ export const PlayerProvider: React.FC<PlayerProviderProps> = ({ children }) => {
   const getCookieValue = (name: string): string | null => {
     const cookies = document.cookie.split(';');
     const cookie = cookies.find(c => c.trim().startsWith(`${name}=`));
-    return cookie ? cookie.split('=')[1] : null;
+    return cookie ? (cookie.split('=')[1] ?? null) : null;
   };
 
-  const initializePlayer = async () => {
+  const refreshHeroes = useCallback(async (playerToUse?: Player) => {
+    // Use passed player or current player state
+    const currentPlayer = playerToUse || player;
+    
+    // If no player is available, skip heroes refresh
+    if (!currentPlayer) {
+      return;
+    }
+
+    try {
+      const heroesData = await apiService.getPlayerHeroes(currentPlayer.ID);
+      setHeroes(heroesData);
+    } catch (_err) {
+      // For now, just set empty heroes list
+      // The user can still create new heroes
+      setHeroes([]);
+    }
+  }, [player]);
+
+  const initializePlayer = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Check if we have a player_secret cookie
-      const playerSecret = getCookieValue('player_secret');
+      // Check if we have existing player ID cookie (player_secret is HttpOnly)
+      const playerId = getCookieValue('player_id');
+      let currentPlayer: Player;
       
-      if (!playerSecret) {
-        // No player exists, create a new one
-        const newPlayer = await apiService.createPlayer(`Player${Date.now()}`);
+      if (!playerId) {
+        // No player ID cookie, create a new player
+        const newPlayer = await apiService.createPlayer(`Player${String(Date.now())}`);
         setPlayer(newPlayer);
+        currentPlayer = newPlayer;
       } else {
-        // We have a secret, try to create a hero to get player info
+        // We have a player ID, try to fetch the existing player info
         try {
-          const hero = await apiService.createHero({
-            title: 'Welcome Hero',
-            description: 'Your first hero in the Pixel Protocol battle arena!'
-          });
-          setPlayer(hero.Player || null);
-        } catch (err) {
-          console.error('Failed to create initial hero:', err);
-          // If hero creation fails, create a new player
-          const newPlayer = await apiService.createPlayer(`Player${Date.now()}`);
+          const existingPlayer = await apiService.getPlayer(playerId);
+          setPlayer(existingPlayer);
+          currentPlayer = existingPlayer;
+        } catch (_err) {
+          // Session invalid or expired, create a new player
+          const newPlayer = await apiService.createPlayer(`Player${String(Date.now())}`);
           setPlayer(newPlayer);
+          currentPlayer = newPlayer;
         }
       }
       
-      await refreshHeroes();
+      await refreshHeroes(currentPlayer);
     } catch (err) {
-      console.error('Failed to initialize player:', err);
       setError(err instanceof Error ? err.message : 'Failed to initialize player');
     } finally {
       setLoading(false);
     }
-  };
-
-  const refreshHeroes = async () => {
-    // If player is not loaded yet, skip heroes refresh
-    if (!player) return;
-
-    try {
-      const heroesData = await apiService.getPlayerHeroes(player.ID);
-      setHeroes(heroesData);
-    } catch (err) {
-      console.error('Failed to refresh heroes:', err);
-      // For now, just log the error and set empty heroes list
-      // The user can still create new heroes
-      setHeroes([]);
-    }
-  };
+  }, [refreshHeroes]);
 
   const createHero = async (title: string, description: string): Promise<Hero> => {
-    try {
-      const newHero = await apiService.createHero({ title, description });
-      
-      // Update player info if it came with the hero
-      if (newHero.Player) {
-        setPlayer(newHero.Player);
-      }
-      
-      await refreshHeroes();
-      return newHero;
-    } catch (err) {
-      console.error('Failed to create hero:', err);
-      throw err;
+    const newHero = await apiService.createHero({ title, description });
+    
+    // Update player info if it came with the hero
+    if (newHero.Player) {
+      setPlayer(newHero.Player);
     }
+    
+    await refreshHeroes();
+    return newHero;
   };
 
   const selectHero = (hero: Hero) => {
@@ -107,8 +107,8 @@ export const PlayerProvider: React.FC<PlayerProviderProps> = ({ children }) => {
   };
 
   useEffect(() => {
-    initializePlayer();
-  }, []);
+    void initializePlayer();
+  }, []); // Only run once on mount
 
   const value: PlayerContextType = {
     player,
@@ -129,10 +129,3 @@ export const PlayerProvider: React.FC<PlayerProviderProps> = ({ children }) => {
   );
 };
 
-export const usePlayer = (): PlayerContextType => {
-  const context = useContext(PlayerContext);
-  if (context === undefined) {
-    throw new Error('usePlayer must be used within a PlayerProvider');
-  }
-  return context;
-};
