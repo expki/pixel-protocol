@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/expki/backend/pixel-protocol/config"
@@ -22,25 +21,6 @@ type Database struct {
 }
 
 func New(appCtx context.Context, cfg config.Database) (db *Database, err error) {
-	// ensure cache directory exists
-	if err := os.MkdirAll(cfg.Cache, 0755); err != nil {
-		return nil, errors.Join(errors.New("failed to create cache directory"), err)
-	}
-
-	// clear cache
-	files, err := os.ReadDir(cfg.Cache)
-	if err != nil {
-		return nil, errors.Join(errors.New("failed to read cache directory"), err)
-	}
-	for _, file := range files {
-		if !file.IsDir() && filepath.Ext(file.Name()) == ".cache" {
-			filePath := filepath.Join(cfg.Cache, file.Name())
-			err := os.Remove(filePath)
-			if err != nil {
-				logger.Sugar().Warn("Failed to delete cache file", filePath)
-			}
-		}
-	}
 
 	// create logger
 	glogger := glog.New(log.New(os.Stdout, "\r\n", log.LstdFlags), glog.Config{
