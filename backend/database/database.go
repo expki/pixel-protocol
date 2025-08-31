@@ -15,8 +15,7 @@ import (
 )
 
 type Database struct {
-	Provider config.DatabaseProvider
-	cfg      config.Database
+	cfg config.Database
 	*gorm.DB
 }
 
@@ -31,7 +30,7 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 	})
 
 	// get dialectors from config
-	readwrite, readonly, provider := cfg.GetDialectors()
+	readwrite, readonly := cfg.GetDialectors()
 	if len(readwrite) == 0 {
 		return nil, errors.New("no writable database configured")
 	}
@@ -43,8 +42,6 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 		Logger:                 glogger,
 	})
 	if err != nil {
-		logger.Sugar().Debugf("config: %+v", cfg)
-		logger.Sugar().Debugf("dsn: %+v", readwrite[0])
 		return nil, errors.Join(errors.New("failed to open database connection"), err)
 	}
 	if sqldb, err := godb.DB(); err == nil {
@@ -80,7 +77,7 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 			return nil, err
 		}
 	}
-	db = &Database{Provider: provider, cfg: cfg, DB: godb}
+	db = &Database{cfg: cfg, DB: godb}
 
 	return db, nil
 }

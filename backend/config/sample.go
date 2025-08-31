@@ -19,11 +19,7 @@ func CreateSample(path string) error {
 			IP:               []string{},
 			Certificates:     []*ConfigTLSPath{},
 		},
-		Database: Database{
-			Sqlite:   "./vectorstore.db",
-			Cache:    "./vectorcache",
-			LogLevel: LogLevelError,
-		},
+		Database: sampleDatabase,
 		LogLevel: LogLevelInfo,
 	}
 	raw, err := json.MarshalIndent(sample, "", "    ")

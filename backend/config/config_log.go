@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm/logger"
 )
 
 type LogLevel string
@@ -37,5 +38,26 @@ func (l LogLevel) Zap() zap.AtomicLevel {
 		return zap.NewAtomicLevelAt(zap.PanicLevel)
 	default:
 		return zap.NewAtomicLevelAt(zap.ErrorLevel)
+	}
+}
+
+func (c LogLevel) GORM() (level logger.LogLevel) {
+	switch strings.ToLower(strings.TrimSpace(c.String())) {
+	case LogLevelDebug.String(), "trace":
+		return logger.Info
+	case LogLevelInfo.String(), "information", "notice":
+		return logger.Info
+	case LogLevelWarn.String(), "warning", "alert":
+		return logger.Warn
+	case LogLevelError.String():
+		return logger.Error
+	case LogLevelFatal.String(), "critical", "emergency":
+		return logger.Error
+	case LogLevelPanic.String():
+		return logger.Error
+	case "silent":
+		return logger.Silent
+	default:
+		return logger.Error
 	}
 }
