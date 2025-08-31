@@ -174,7 +174,18 @@ func main() {
 	mux.Handle("/api/upload", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(nil)))))
 
 	// Routes: Static
-	mux.Handle("/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.FileServerFS(nil)))))
+	static := http.FileServerFS(distZstd)
+	staticZstd := http.FileServerFS(distZstd)
+	mux.Handle("/", middlewareHeaders(func() http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !strings.Contains(r.Header.Get("Accept-Encoding"), "zstd") {
+				static.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("Content-Encoding", "zstd")
+			staticZstd.ServeHTTP(w, r)
+		})
+	}()))
 
 	// Start servers
 	serverDone := make(chan struct{})

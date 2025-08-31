@@ -23,6 +23,7 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-sqlite3 v1.14.28 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
+	github.com/spf13/afero v1.14.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.39.0 // indirect
