@@ -3,8 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math"
-	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/expki/backend/pixel-protocol/database"
 	"github.com/expki/backend/pixel-protocol/logger"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"gorm.io/plugin/dbresolver"
 )
 
@@ -364,7 +366,7 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 	}
 
 	// Find a suitable opponent with similar ELO
-	defender, err := s.findOpponent(r.Context(), attackerID, attacker.Elo)
+	defender, err := s.findOpponent(r.Context(), attacker)
 	if err != nil {
 		logger.Sugar().Errorf("Failed to find opponent: %v", err)
 		http.Error(w, "No suitable opponent found", http.StatusNotFound)
@@ -374,7 +376,7 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 	// Simple 50/50 random fight outcome
 	// TODO: proper fights
 	outcome := database.FightOutcome_Defeat
-	if rand.Float64() < 0.5 {
+	if randomBool() {
 		outcome = database.FightOutcome_Victory
 	}
 
@@ -473,47 +475,47 @@ func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attacke
 	json.NewEncoder(w).Encode(result)
 }
 
-func (s *Server) findOpponent(ctx context.Context, attackerID uuid.UUID, attackerElo uint32) (*database.Hero, error) {
+func (s *Server) findOpponent(ctx context.Context, attacker database.Hero) (*database.Hero, error) {
 	// Define ELO range for matchmaking (±200 ELO points)
 	eloRange := uint32(200)
-	minElo := attackerElo
-	maxElo := attackerElo + eloRange
+	minElo := attacker.Elo
+	maxElo := attacker.Elo + eloRange
 
-	if attackerElo > eloRange {
-		minElo = attackerElo - eloRange
+	if attacker.Elo > eloRange {
+		minElo = attacker.Elo - eloRange
 	} else {
 		minElo = 0
 	}
 
-	// Find potential opponents within ELO range
-	var opponents []database.Hero
-	err := s.db.DB.Clauses(dbresolver.Read).WithContext(ctx).
-		Where("id != ? AND deleted_at IS NULL AND elo BETWEEN ? AND ?",
-					attackerID, minElo, maxElo).
-		Order("RANDOM()"). // Random selection for variety
-		Limit(10).         // Get a small pool to choose from
-		Find(&opponents).Error
-
-	if err != nil {
-		return nil, err
-	}
-
-	if len(opponents) == 0 {
-		// If no opponents in range, find the closest one
-		var opponent database.Hero
-		err = s.db.DB.Clauses(dbresolver.Read).WithContext(ctx).
-			Where("id != ? AND deleted_at IS NULL", attackerID).
-			Order("RANDOM()"). // Just pick a random opponent if none in range
-			First(&opponent).Error
-
-		if err != nil {
-			return nil, err
+	// Find local potential opponent within ELO range
+	if randomBool() {
+		var opponentLocal database.Hero
+		errLocal := s.db.DB.Clauses(dbresolver.Read).WithContext(ctx).
+			Where("id != ? AND deleted_at IS NULL AND country = ? AND elo BETWEEN ? AND ?", attacker.ID, attacker.Country, minElo, maxElo).
+			Order("RANDOM()"). // Random selection for variety
+			Take(&opponentLocal).Error
+		if errLocal != nil && !errors.Is(errLocal, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("database error: %w", errLocal)
+		} else if errLocal == nil {
+			return &opponentLocal, nil
 		}
-		return &opponent, nil
 	}
 
-	// Select a random opponent from the pool
-	return &opponents[rand.Intn(len(opponents))], nil
+	// Find global potential opponents within ELO range
+	var opponentGlobal database.Hero
+	errGlobal := s.db.DB.Clauses(dbresolver.Read).WithContext(ctx).
+		Where("id != ? AND deleted_at IS NULL AND elo BETWEEN ? AND ?", attacker.ID, minElo, maxElo).
+		Order("RANDOM()"). // Random selection for variety
+		Take(&opponentGlobal).Error
+	if errGlobal != nil && !errors.Is(errGlobal, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("database error: %w", errGlobal)
+	} else if errors.Is(errGlobal, gorm.ErrRecordNotFound) {
+		errGlobal = s.db.DB.Clauses(dbresolver.Read).WithContext(ctx).
+			Where("id != ? AND deleted_at IS NULL", attacker.ID).
+			Order("RANDOM()"). // Just pick a random opponent if none in range
+			First(&opponentGlobal).Error
+	}
+	return &opponentGlobal, errGlobal
 }
 
 func calculateEloChange(attackerElo, defenderElo uint32, won bool) int32 {
@@ -533,4 +535,9 @@ func calculateEloChange(attackerElo, defenderElo uint32, won bool) int32 {
 	eloChange := K * (actualScore - expectedScore)
 
 	return int32(math.Round(eloChange))
+}
+
+func randomBool() bool {
+	nano := time.Now().UnixNano()
+	return ((nano>>1)^nano)%2 == 0
 }
