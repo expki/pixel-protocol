@@ -53,9 +53,13 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 		sqldb.SetMaxIdleConns(5)
 		sqldb.SetMaxOpenConns(10)
 	}
-	godb.Clauses(dbresolver.Write).AutoMigrate(
-		&User{},
+	err = godb.Clauses(dbresolver.Write).AutoMigrate(
+		&Player{},
+		&Hero{},
 	)
+	if err != nil {
+		logger.Sugar().Errorf("failed to migrate database: %v", err)
+	}
 
 	// add resolver connections
 	if len(readonly)+len(readwrite) > 1 {
