@@ -10,6 +10,7 @@ type Player struct {
 	ID             uuid.UUID `gorm:"primarykey"`
 	UserName       string    `gorm:"index:uq_player_username,unique;not null"`
 	UserNameSuffix uint32    `gorm:"index:uq_player_username,unique;not null"`
+	Secret         uuid.UUID `gorm:"uniqueIndex;not null"`
 	Heros          []*Hero
 	DeletedAt      *time.Time
 }

@@ -177,6 +177,7 @@ func main() {
 
 	// Routes: API
 	mux.Handle("/api/player/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.HandlePlayer)))))
+	mux.Handle("/api/hero/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.HandleHero)))))
 
 	// Routes: Static
 	static := http.FileServerFS(distZstd)

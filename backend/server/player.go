@@ -13,6 +13,10 @@ import (
 	"gorm.io/plugin/dbresolver"
 )
 
+type PlayerSecret struct {
+	Secret string `json:"_secret"`
+}
+
 type PlayerRequest struct {
 	UserName string `json:"username"`
 }
@@ -24,48 +28,45 @@ type PlayerUpdateRequest struct {
 func (s *Server) HandlePlayer(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/player")
 	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if r.Method == http.MethodPost {
+		s.createPlayer(w, r)
+		return
+	}
+	id, err := uuid.Parse(segments[0])
+	if err != nil {
+		http.Error(w, "Invalid player ID", http.StatusBadRequest)
+		return
+	}
+	var secretStruct PlayerSecret
+	err = json.NewDecoder(r.Body).Decode(&secretStruct)
+	if err != nil {
+		http.Error(w, "Missing player _secret", http.StatusBadRequest)
+		return
+	}
+	secret, err := uuid.Parse(secretStruct.Secret)
+	if err != nil {
+		http.Error(w, "Invalid player _secret", http.StatusBadRequest)
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet:
-		if len(segments) == 1 && segments[0] != "" {
-			s.getPlayer(w, r, segments[0])
-		} else {
-			http.Error(w, "Player ID required", http.StatusBadRequest)
-		}
-	case http.MethodPost:
-		s.createPlayer(w, r)
+		s.getPlayer(w, r, id, secret)
 	case http.MethodPut:
-		if len(segments) == 1 && segments[0] != "" {
-			s.updatePlayer(w, r, segments[0])
-		} else {
-			http.Error(w, "Player ID required", http.StatusBadRequest)
-		}
+		s.updatePlayer(w, r, id, secret)
 	case http.MethodPatch:
-		if len(segments) == 1 && segments[0] != "" {
-			s.patchPlayer(w, r, segments[0])
-		} else {
-			http.Error(w, "Player ID required", http.StatusBadRequest)
-		}
+		s.patchPlayer(w, r, id, secret)
 	case http.MethodDelete:
-		if len(segments) == 1 && segments[0] != "" {
-			s.deletePlayer(w, r, segments[0])
-		} else {
-			http.Error(w, "Player ID required", http.StatusBadRequest)
-		}
+		s.deletePlayer(w, r, id, secret)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func (s *Server) getPlayer(w http.ResponseWriter, r *http.Request, idStr string) {
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		http.Error(w, "Invalid player ID", http.StatusBadRequest)
-		return
-	}
+func (s *Server) getPlayer(w http.ResponseWriter, r *http.Request, id, secret uuid.UUID) {
 
 	var player database.Player
-	result := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("id = ? AND deleted_at IS NULL", id).First(&player)
+	result := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("id = ? AND secret = ? AND deleted_at IS NULL", id, secret).First(&player)
 	if result.Error != nil {
 		if result.RowsAffected == 0 {
 			http.Error(w, "Player not found", http.StatusNotFound)
@@ -99,6 +100,7 @@ func (s *Server) createPlayer(w http.ResponseWriter, r *http.Request) {
 		ID:             uuid.New(),
 		UserName:       req.UserName,
 		UserNameSuffix: suffix,
+		Secret:         uuid.New(),
 	}
 
 	result := s.db.DB.Clauses(dbresolver.Write).WithContext(r.Context()).Create(&player)
@@ -141,12 +143,7 @@ func (s *Server) generateUserNameSuffix(ctx context.Context, username string) ui
 	return uint32(len(existingSuffixes) + 1)
 }
 
-func (s *Server) updatePlayer(w http.ResponseWriter, r *http.Request, idStr string) {
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		http.Error(w, "Invalid player ID", http.StatusBadRequest)
-		return
-	}
+func (s *Server) updatePlayer(w http.ResponseWriter, r *http.Request, id, secret uuid.UUID) {
 
 	var req PlayerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -160,7 +157,7 @@ func (s *Server) updatePlayer(w http.ResponseWriter, r *http.Request, idStr stri
 	}
 
 	var player database.Player
-	result := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("id = ? AND deleted_at IS NULL", id).First(&player)
+	result := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("id = ? AND secret = ? AND deleted_at IS NULL", id, secret).First(&player)
 	if result.Error != nil {
 		if result.RowsAffected == 0 {
 			http.Error(w, "Player not found", http.StatusNotFound)
@@ -180,18 +177,8 @@ func (s *Server) updatePlayer(w http.ResponseWriter, r *http.Request, idStr stri
 	result = s.db.DB.Clauses(dbresolver.Write).WithContext(r.Context()).Save(&player)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "duplicate") || strings.Contains(result.Error.Error(), "unique") {
-			// Try with a different suffix
-			for attempts := 0; attempts < 10; attempts++ {
-				player.UserNameSuffix = s.generateUserNameSuffix(r.Context(), req.UserName)
-				result = s.db.DB.Clauses(dbresolver.Write).WithContext(r.Context()).Save(&player)
-				if result.Error == nil {
-					break
-				}
-			}
-			if result.Error != nil {
-				http.Error(w, "Unable to update with unique username", http.StatusConflict)
-				return
-			}
+			http.Error(w, "Unable to update with unique username", http.StatusConflict)
+			return
 		} else {
 			logger.Sugar().Errorf("Failed to update player: %v", result.Error)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -203,12 +190,7 @@ func (s *Server) updatePlayer(w http.ResponseWriter, r *http.Request, idStr stri
 	json.NewEncoder(w).Encode(player)
 }
 
-func (s *Server) patchPlayer(w http.ResponseWriter, r *http.Request, idStr string) {
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		http.Error(w, "Invalid player ID", http.StatusBadRequest)
-		return
-	}
+func (s *Server) patchPlayer(w http.ResponseWriter, r *http.Request, id, secret uuid.UUID) {
 
 	var req PlayerUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -217,7 +199,7 @@ func (s *Server) patchPlayer(w http.ResponseWriter, r *http.Request, idStr strin
 	}
 
 	var player database.Player
-	result := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("id = ? AND deleted_at IS NULL", id).First(&player)
+	result := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("id = ? AND secret = ? AND deleted_at IS NULL", id, secret).First(&player)
 	if result.Error != nil {
 		if result.RowsAffected == 0 {
 			http.Error(w, "Player not found", http.StatusNotFound)
@@ -237,18 +219,8 @@ func (s *Server) patchPlayer(w http.ResponseWriter, r *http.Request, idStr strin
 	result = s.db.DB.Clauses(dbresolver.Write).WithContext(r.Context()).Save(&player)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "duplicate") || strings.Contains(result.Error.Error(), "unique") {
-			// Try with a different suffix
-			for attempts := 0; attempts < 10; attempts++ {
-				player.UserNameSuffix = s.generateUserNameSuffix(r.Context(), player.UserName)
-				result = s.db.DB.Clauses(dbresolver.Write).WithContext(r.Context()).Save(&player)
-				if result.Error == nil {
-					break
-				}
-			}
-			if result.Error != nil {
-				http.Error(w, "Unable to update with unique username", http.StatusConflict)
-				return
-			}
+			http.Error(w, "Unable to update with unique username", http.StatusConflict)
+			return
 		} else {
 			logger.Sugar().Errorf("Failed to patch player: %v", result.Error)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -260,17 +232,12 @@ func (s *Server) patchPlayer(w http.ResponseWriter, r *http.Request, idStr strin
 	json.NewEncoder(w).Encode(player)
 }
 
-func (s *Server) deletePlayer(w http.ResponseWriter, r *http.Request, idStr string) {
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		http.Error(w, "Invalid player ID", http.StatusBadRequest)
-		return
-	}
+func (s *Server) deletePlayer(w http.ResponseWriter, r *http.Request, id, secret uuid.UUID) {
 
 	// Soft delete by setting DeletedAt timestamp
 	now := time.Now()
 	result := s.db.DB.Clauses(dbresolver.Write).WithContext(r.Context()).Model(&database.Player{}).
-		Where("id = ? AND deleted_at IS NULL", id).
+		Where("id = ? AND secret = ? AND deleted_at IS NULL", id, secret).
 		Update("deleted_at", now)
 
 	if result.Error != nil {
