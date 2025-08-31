@@ -158,7 +158,11 @@ func main() {
 				return
 			}
 			w.Header().Set("Content-Encoding", "zstd")
-			encoder, err := zstd.NewWriter(w, zstd.WithEncoderLevel(zstd.SpeedFastest))
+			encoder, err := zstd.NewWriter(w,
+				zstd.WithEncoderLevel(zstd.SpeedDefault),
+				zstd.WithEncoderCRC(false),
+				zstd.WithEncoderConcurrency(1),
+			)
 			if err != nil {
 				logger.Sugar().Errorf("Failed to create zstd encoder: %v", err)
 				h.ServeHTTP(w, r)

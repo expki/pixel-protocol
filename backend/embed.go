@@ -23,7 +23,11 @@ var dist = func() fs.FS {
 
 var distZstd = func() fs.FS {
 	memfs := afero.NewMemMapFs()
-	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedDefault))
+	encoder, err := zstd.NewWriter(nil,
+		zstd.WithEncoderLevel(zstd.SpeedDefault),
+		zstd.WithEncoderCRC(false),
+		zstd.WithEncoderConcurrency(1),
+	)
 	if err != nil {
 		log.Fatalf("initialize embedding compression: %v", err)
 	}
