@@ -1,7 +1,6 @@
 import type { Hero, Player, FightResult, FightsResponse, Fight } from '../types/api';
 import { mockApiService } from './mockApi';
 
-const API_BASE = 'http://localhost:5080/api';
 
 interface CreateHeroRequest {
   title: string;
@@ -69,7 +68,7 @@ class ApiService {
     if (this.useMockApi) {
       return mockApiService.createPlayer(username);
     }
-    const response = await fetch(`${API_BASE}/player`, {
+    const response = await fetch(`/api/player`, {
       method: 'POST',
       headers: this.getHeaders(false),
       body: JSON.stringify({ username }),
@@ -87,7 +86,7 @@ class ApiService {
     if (this.useMockApi) {
       return mockApiService.getPlayer(id);
     }
-    const response = await fetch(`${API_BASE}/player/${id}`, {
+    const response = await fetch(`/api/player/${id}`, {
       method: 'GET',
       headers: this.getHeaders(),
       credentials: 'include', // This will send HttpOnly cookies automatically
@@ -105,7 +104,7 @@ class ApiService {
     if (this.useMockApi) {
       return mockApiService.createHero(heroData);
     }
-    const response = await fetch(`${API_BASE}/hero`, {
+    const response = await fetch(`/api/hero`, {
       method: 'POST',
       headers: this.getHeaders(false),
       body: JSON.stringify(heroData),
@@ -123,7 +122,7 @@ class ApiService {
     if (this.useMockApi) {
       return mockApiService.getHero(id);
     }
-    const response = await this.makeAuthenticatedRequest(`${API_BASE}/hero/${id}`, {
+    const response = await this.makeAuthenticatedRequest(`/api/hero/${id}`, {
       method: 'GET',
     });
 
@@ -138,7 +137,7 @@ class ApiService {
     if (this.useMockApi) {
       return mockApiService.getHeroImage(id);
     }
-    const response = await fetch(`${API_BASE}/hero/${id}/image`, {
+    const response = await fetch(`/api/hero/${id}/image`, {
       credentials: 'include',
     });
 
@@ -155,7 +154,7 @@ class ApiService {
     if (this.useMockApi) {
       return mockApiService.startFight(heroId);
     }
-    const response = await fetch(`${API_BASE}/hero/${heroId}/fight`, {
+    const response = await fetch(`/api/hero/${heroId}/fight`, {
       method: 'POST',
       headers: this.getHeaders(),
       credentials: 'include', // This will send HttpOnly cookies automatically
@@ -175,7 +174,7 @@ class ApiService {
     }
     params.append('limit', limit.toString());
 
-    const response = await fetch(`${API_BASE}/hero/${heroId}/fights?${params}`, {
+    const response = await fetch(`/api/hero/${heroId}/fights?${params}`, {
       credentials: 'include',
     });
 
@@ -187,7 +186,7 @@ class ApiService {
   }
 
   async getFight(heroId: string, fightId: string): Promise<Fight> {
-    const response = await fetch(`${API_BASE}/hero/${heroId}/fight/${fightId}`, {
+    const response = await fetch(`/api/hero/${heroId}/fight/${fightId}`, {
       credentials: 'include',
     });
 
@@ -203,7 +202,7 @@ class ApiService {
     if (this.useMockApi) {
       return mockApiService.getPlayerHeroes(playerId);
     }
-    const response = await fetch(`${API_BASE}/player/${playerId}/heroes`, {
+    const response = await fetch(`/api/player/${playerId}/heroes`, {
       method: 'GET',
       headers: this.getHeaders(),
       credentials: 'include', // This will send HttpOnly cookies automatically
