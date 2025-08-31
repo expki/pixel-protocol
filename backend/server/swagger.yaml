@@ -195,7 +195,6 @@ paths:
               required:
                 - title
                 - description
-                - _secret
               properties:
                 title:
                   type: string
@@ -203,10 +202,6 @@ paths:
                 description:
                   type: string
                   example: "A mighty warrior who defeats dragons"
-                _secret:
-                  type: string
-                  format: uuid
-                  description: Player's secret for authentication
       responses:
         '201':
           description: Hero created successfully and authentication cookie set

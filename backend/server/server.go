@@ -52,6 +52,24 @@ func (s *Server) setPlayerSecretCookie(r *http.Request, w http.ResponseWriter, s
 	http.SetCookie(w, cookie)
 }
 
+func (s *Server) setPlayerIDCookie(r *http.Request, w http.ResponseWriter, id uuid.UUID) { // Check if the request was made over HTTPS
+	isHTTPS := r.TLS != nil ||
+		r.Header.Get("X-Forwarded-Proto") == "https" ||
+		r.Header.Get("X-Forwarded-Protocol") == "https" ||
+		r.URL.Scheme == "https"
+
+	cookie := &http.Cookie{
+		Name:     "player_id",
+		Value:    id.String(),
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   isHTTPS,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   0, // Session cookie (no expiration)
+	}
+	http.SetCookie(w, cookie)
+}
+
 // SecretNotFoundError represents when no secret is found in body or cookie
 type SecretNotFoundError struct{}
 

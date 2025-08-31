@@ -154,6 +154,7 @@ func (s *Server) createHero(w http.ResponseWriter, r *http.Request, player datab
 
 	// Set the player secret as a secure cookie
 	s.setPlayerSecretCookie(r, w, player.Secret)
+	s.setPlayerIDCookie(r, w, player.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
