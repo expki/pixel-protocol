@@ -43,6 +43,10 @@ func (s *Server) HandlePlayer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing player _secret", http.StatusBadRequest)
 		return
 	}
+	if secretStruct.Secret == "" {
+		http.Error(w, "Secret is required", http.StatusBadRequest)
+		return
+	}
 	secret, err := uuid.Parse(secretStruct.Secret)
 	if err != nil {
 		http.Error(w, "Invalid player _secret", http.StatusBadRequest)

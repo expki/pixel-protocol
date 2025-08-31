@@ -1,9 +1,13 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"math"
+	"math/rand"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/expki/backend/pixel-protocol/database"
 	"github.com/expki/backend/pixel-protocol/logger"
@@ -55,11 +59,6 @@ func (s *Server) HandlePlayerFights(w http.ResponseWriter, r *http.Request) {
 
 // HandleHeroFights handles /api/hero/:id/fights and /api/hero/:id/fight/:fightId
 func (s *Server) HandleHeroFights(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	path := strings.TrimPrefix(r.URL.Path, "/api/hero/")
 	segments := strings.Split(path, "/")
 
@@ -74,18 +73,26 @@ func (s *Server) HandleHeroFights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if it's for fights list or specific fight
-	if segments[1] == "fights" {
-		s.getHeroFights(w, r, heroID)
-	} else if segments[1] == "fight" && len(segments) > 2 {
-		fightID, err := uuid.Parse(segments[2])
-		if err != nil {
-			http.Error(w, "Invalid fight ID", http.StatusBadRequest)
-			return
+	// Handle different methods and paths
+	if r.Method == http.MethodPost && segments[1] == "fight" {
+		// POST /api/hero/:id/fight - Create a new fight
+		s.createHeroFight(w, r, heroID)
+	} else if r.Method == http.MethodGet {
+		// Check if it's for fights list or specific fight
+		if segments[1] == "fights" {
+			s.getHeroFights(w, r, heroID)
+		} else if segments[1] == "fight" && len(segments) > 2 {
+			fightID, err := uuid.Parse(segments[2])
+			if err != nil {
+				http.Error(w, "Invalid fight ID", http.StatusBadRequest)
+				return
+			}
+			s.getHeroFight(w, r, heroID, fightID)
+		} else {
+			http.Error(w, "Invalid path", http.StatusBadRequest)
 		}
-		s.getHeroFight(w, r, heroID, fightID)
 	} else {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
@@ -124,7 +131,7 @@ func (s *Server) getPlayerFights(w http.ResponseWriter, r *http.Request, playerI
 	query := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).
 		Model(&database.Fight{}).
 		Where("(attacker_id IN ? OR defender_id IN ?)", heroIDs, heroIDs).
-		Order("timestamp DESC, id DESC").
+		Order("timestamp DESC").
 		Preload("Attacker").
 		Preload("Defender").
 		Limit(20 + 1) // Get one extra to check if there are more
@@ -192,7 +199,7 @@ func (s *Server) getHeroFights(w http.ResponseWriter, r *http.Request, heroID uu
 	query := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).
 		Model(&database.Fight{}).
 		Where("attacker_id = ? OR defender_id = ?", heroID, heroID).
-		Order("timestamp DESC, id DESC").
+		Order("timestamp DESC").
 		Preload("Attacker").
 		Preload("Defender").
 		Limit(20 + 1) // Get one extra to check if there are more
@@ -317,4 +324,213 @@ func (s *Server) getHeroFight(w http.ResponseWriter, r *http.Request, heroID, fi
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fight)
+}
+
+type FightResult struct {
+	Fight   database.Fight `json:"fight"`
+	Victory bool           `json:"victory"`
+	EloGain int32          `json:"elo_gain"`
+}
+
+func (s *Server) createHeroFight(w http.ResponseWriter, r *http.Request, attackerID uuid.UUID) {
+	// Parse request body for secret
+	var req PlayerSecret
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Secret == "" {
+		http.Error(w, "Secret is required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse secret as UUID
+	secret, err := uuid.Parse(req.Secret)
+	if err != nil {
+		http.Error(w, "Invalid secret", http.StatusBadRequest)
+		return
+	}
+
+	// Get the attacker hero and verify ownership
+	var attacker database.Hero
+	err = s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).
+		Where("id = ? AND secret = ? AND deleted_at IS NULL", attackerID, secret).
+		Preload("Player").
+		First(&attacker).Error
+	if err != nil {
+		http.Error(w, "Hero not found", http.StatusNotFound)
+		return
+	}
+
+	// Find a suitable opponent with similar ELO
+	defender, err := s.findOpponent(r.Context(), attackerID, attacker.Elo)
+	if err != nil {
+		logger.Sugar().Errorf("Failed to find opponent: %v", err)
+		http.Error(w, "No suitable opponent found", http.StatusNotFound)
+		return
+	}
+
+	// Simple 50/50 random fight outcome
+	// TODO: proper fights
+	outcome := database.FightOutcome_Defeat
+	if rand.Float64() < 0.5 {
+		outcome = database.FightOutcome_Victory
+	}
+
+	// Calculate ELO changes using standard ELO formula
+	eloGain := calculateEloChange(attacker.Elo, defender.Elo, outcome == database.FightOutcome_Victory)
+
+	// Create fight record
+	fight := database.Fight{
+		ID:         uuid.New(),
+		AttackerID: attackerID,
+		DefenderID: defender.ID,
+		Timestamp:  time.Now(),
+		Outcome:    outcome,
+	}
+
+	// Start transaction to update ELOs and create fight
+	tx := s.db.DB.Clauses(dbresolver.Write).WithContext(r.Context()).Begin()
+
+	// Create fight record
+	if err := tx.Create(&fight).Error; err != nil {
+		tx.Rollback()
+		logger.Sugar().Errorf("Failed to create fight: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Update attacker ELO
+	newAttackerElo := attacker.Elo
+	if outcome == database.FightOutcome_Victory {
+		newAttackerElo = uint32(int32(attacker.Elo) + eloGain)
+	} else {
+		// Ensure ELO doesn't go below 0
+		if int32(attacker.Elo) > eloGain {
+			newAttackerElo = uint32(int32(attacker.Elo) - eloGain)
+		} else {
+			newAttackerElo = 0
+		}
+	}
+
+	if err := tx.Model(&database.Hero{}).Where("id = ?", attackerID).
+		Update("elo", newAttackerElo).Error; err != nil {
+		tx.Rollback()
+		logger.Sugar().Errorf("Failed to update attacker ELO: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Update defender ELO (opposite of attacker)
+	newDefenderElo := defender.Elo
+	if outcome == database.FightOutcome_Victory {
+		// Attacker won, defender loses ELO
+		if int32(defender.Elo) > eloGain {
+			newDefenderElo = uint32(int32(defender.Elo) - eloGain)
+		} else {
+			newDefenderElo = 0
+		}
+	} else {
+		// Attacker lost, defender gains ELO
+		newDefenderElo = uint32(int32(defender.Elo) + eloGain)
+	}
+
+	if err := tx.Model(&database.Hero{}).Where("id = ?", defender.ID).
+		Update("elo", newDefenderElo).Error; err != nil {
+		tx.Rollback()
+		logger.Sugar().Errorf("Failed to update defender ELO: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		logger.Sugar().Errorf("Failed to commit transaction: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Load the complete fight with relationships
+	s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).
+		Where("id = ?", fight.ID).
+		Preload("Attacker").
+		Preload("Defender").
+		First(&fight)
+
+	// Prepare response
+	result := FightResult{
+		Fight:   fight,
+		Victory: outcome == database.FightOutcome_Victory,
+		EloGain: eloGain,
+	}
+	if outcome == database.FightOutcome_Defeat {
+		result.EloGain = -eloGain
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) findOpponent(ctx context.Context, attackerID uuid.UUID, attackerElo uint32) (*database.Hero, error) {
+	// Define ELO range for matchmaking (±200 ELO points)
+	eloRange := uint32(200)
+	minElo := attackerElo
+	maxElo := attackerElo + eloRange
+
+	if attackerElo > eloRange {
+		minElo = attackerElo - eloRange
+	} else {
+		minElo = 0
+	}
+
+	// Find potential opponents within ELO range
+	var opponents []database.Hero
+	err := s.db.DB.Clauses(dbresolver.Read).WithContext(ctx).
+		Where("id != ? AND deleted_at IS NULL AND elo BETWEEN ? AND ?",
+					attackerID, minElo, maxElo).
+		Order("RANDOM()"). // Random selection for variety
+		Limit(10).         // Get a small pool to choose from
+		Find(&opponents).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(opponents) == 0 {
+		// If no opponents in range, find the closest one
+		var opponent database.Hero
+		err = s.db.DB.Clauses(dbresolver.Read).WithContext(ctx).
+			Where("id != ? AND deleted_at IS NULL", attackerID).
+			Order("RANDOM()"). // Just pick a random opponent if none in range
+			First(&opponent).Error
+
+		if err != nil {
+			return nil, err
+		}
+		return &opponent, nil
+	}
+
+	// Select a random opponent from the pool
+	return &opponents[rand.Intn(len(opponents))], nil
+}
+
+func calculateEloChange(attackerElo, defenderElo uint32, won bool) int32 {
+	// K-factor (determines how much ratings can change)
+	K := float64(32)
+
+	// Expected score based on ELO difference
+	expectedScore := 1 / (1 + math.Pow(10, float64(defenderElo-attackerElo)/400))
+
+	// Actual score (1 for win, 0 for loss)
+	actualScore := 0.0
+	if won {
+		actualScore = 1.0
+	}
+
+	// Calculate ELO change
+	eloChange := K * (actualScore - expectedScore)
+
+	return int32(math.Round(eloChange))
 }
