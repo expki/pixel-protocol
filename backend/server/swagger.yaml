@@ -413,6 +413,65 @@ paths:
         '404':
           description: Hero or opponent not found
 
+  /api/hero/{id}/fight/{fightId}/image:
+    post:
+      summary: Generate fight result image
+      description: |
+        Generates a visual representation of a fight result by uploading an image
+        and receiving back a generated image that represents the fight outcome.
+        Different image styles are used based on fight outcome (victory/defeat/draw).
+        The generated image incorporates elements from the uploaded image and fight details.
+      tags:
+        - Fight
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Hero ID (must be either attacker or defender in the fight)
+        - in: path
+          name: fightId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Fight ID
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: Image file to be processed (PNG, JPG, etc.)
+      responses:
+        '200':
+          description: Generated fight result image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=300"
+            ETag:
+              schema:
+                type: string
+        '400':
+          description: Invalid request or missing image file
+        '404':
+          description: Fight not found or hero not involved in fight
+
   /api/hero/{id}/fights:
     get:
       summary: Get all fights for a hero
