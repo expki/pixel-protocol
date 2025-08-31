@@ -30,9 +30,21 @@ func (s *Server) HandlePlayer(w http.ResponseWriter, r *http.Request) {
 		s.createPlayer(w, r)
 		return
 	}
+	
+	if len(segments) == 0 || segments[0] == "" {
+		http.Error(w, "Player ID is required", http.StatusBadRequest)
+		return
+	}
+	
 	id, err := uuid.Parse(segments[0])
 	if err != nil {
 		http.Error(w, "Invalid player ID", http.StatusBadRequest)
+		return
+	}
+
+	// Check if this is a heroes endpoint
+	if len(segments) > 1 && segments[1] == "heroes" {
+		s.getPlayerHeroes(w, r, id)
 		return
 	}
 
@@ -275,4 +287,64 @@ func (s *Server) deletePlayer(w http.ResponseWriter, r *http.Request, id, secret
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getPlayerHeroes(w http.ResponseWriter, r *http.Request, playerID uuid.UUID) {
+	// Read body to buffer so we can use it multiple times
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Extract secret from body or cookie
+	var secret uuid.UUID
+	var secretStruct PlayerSecret
+	
+	// Try to parse secret from JSON body first
+	if len(bodyBytes) > 0 {
+		if err := json.Unmarshal(bodyBytes, &secretStruct); err == nil && secretStruct.Secret != "" {
+			secret, err = uuid.Parse(secretStruct.Secret)
+			if err != nil {
+				http.Error(w, "Invalid player _secret", http.StatusBadRequest)
+				return
+			}
+		}
+	}
+	
+	// Fallback to cookie if no secret in body
+	if secret == uuid.Nil {
+		var cookieErr error
+		secret, cookieErr = s.extractSecretFromCookie(r)
+		if cookieErr != nil {
+			http.Error(w, "Player secret required (provide _secret in body or login)", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	// Verify the player exists and secret is correct
+	var player database.Player
+	result := s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("id = ? AND secret = ? AND deleted_at IS NULL", playerID, secret).First(&player)
+	if result.Error != nil {
+		if result.RowsAffected == 0 {
+			http.Error(w, "Player not found", http.StatusNotFound)
+		} else {
+			logger.Sugar().Errorf("Failed to get player: %v", result.Error)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Get all heroes for this player
+	var heroes []database.Hero
+	result = s.db.DB.Clauses(dbresolver.Read).WithContext(r.Context()).Where("player_id = ? AND deleted_at IS NULL", playerID).Preload("Player").Find(&heroes)
+	if result.Error != nil {
+		logger.Sugar().Errorf("Failed to get player heroes: %v", result.Error)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(heroes)
 }
