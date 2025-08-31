@@ -1,3 +1,5 @@
 config.json
 pixel-protocol.db
 server.log
+dist/*
+!dist/index.html
